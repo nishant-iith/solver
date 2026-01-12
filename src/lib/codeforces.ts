@@ -82,7 +82,11 @@ export async function submitCFSolution(
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded",
-            "Cookie": `JSESSIONID=${jsessionid};`
+            "Cookie": `JSESSIONID=${jsessionid}; 39ce7=${csrf_token}`, // CF often uses 39ce7 cookie for CSRF or just checking presence
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Origin": "https://codeforces.com",
+            "Referer": `https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`,
+            "x-csrf-token": csrf_token // sometimes header is needed too
         },
         body: body.toString()
     });
@@ -91,5 +95,9 @@ export async function submitCFSolution(
         return { status: "Success", message: "Check your CF status page!" };
     }
 
-    throw new Error(`CF Submission Failed: ${res.statusText}`);
+    // Try to get more info from error body
+    const text = await res.text();
+    console.log("CF Error Body:", text.substring(0, 200));
+
+    throw new Error(`CF Submission Failed: ${res.statusText} (${res.status})`);
 }
