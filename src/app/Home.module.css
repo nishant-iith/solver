@@ -89,6 +89,37 @@
     border-color: var(--primary);
 }
 
+.setting.solveButton:disabled {
+    background: var(--bg-card);
+    color: var(--text-dim);
+    border-color: var(--text-dim);
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.secondaryButton {
+    margin-top: 1.5rem;
+    background: transparent;
+    border: 1px solid var(--gold-primary);
+    color: var(--gold-primary);
+    padding: 0.8rem 1.5rem;
+    border-radius: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
+}
+
+.secondaryButton:hover:not(:disabled) {
+    background: rgba(212, 175, 55, 0.1);
+    transform: translateY(-2px);
+}
+
+.logo {
+    text-align: center;
+}
+
 .modalOverlay {
     position: fixed;
     top: 0;
@@ -153,6 +184,99 @@
 
 .saveButton:hover {
     opacity: 0.9;
+}
+
+.settingsTabs {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 10px;
+}
+
+.tab {
+    cursor: pointer;
+    color: #888;
+    font-weight: 600;
+    font-size: 0.9rem;
+    padding: 5px 10px;
+    transition: all 0.2s;
+}
+
+.tab.active {
+    color: var(--primary);
+    border-bottom: 2px solid var(--primary);
+}
+
+.automationSection {
+    margin-top: 10px;
+}
+
+.toggleContainer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    background: rgba(255, 255, 255, 0.03);
+    padding: 12px;
+    border-radius: 10px;
+}
+
+.toggleContainer label {
+    color: #fff;
+    font-weight: 500;
+    margin-bottom: 0 !important;
+}
+
+.toggle {
+    appearance: none;
+    width: 40px;
+    height: 20px;
+    background: #333;
+    border-radius: 20px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.toggle:checked {
+    background: var(--primary);
+}
+
+.toggle::before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: left 0.3s;
+}
+
+.toggle:checked::before {
+    left: 22px;
+}
+
+.helperText {
+    font-size: 0.75rem;
+    color: #666;
+    margin-top: -10px;
+    margin-bottom: 15px;
+    line-height: 1.4;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
 }
 
 @keyframes spin {

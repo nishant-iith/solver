@@ -1,5 +1,5 @@
 export async function getPOTD(sessionString?: string, csrfToken?: string) {
-    const query = `
+  const query = `
     query questionOfToday {
       activeDailyCodingChallengeQuestion {
         date
@@ -15,28 +15,28 @@ export async function getPOTD(sessionString?: string, csrfToken?: string) {
     }
   `;
 
-    const headers: any = {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0",
-    };
+  const headers: any = {
+    "Content-Type": "application/json",
+    "User-Agent": "Mozilla/5.0",
+  };
 
-    if (sessionString && csrfToken) {
-        headers["Cookie"] = `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`;
-        headers["X-CSRFToken"] = csrfToken;
-    }
+  if (sessionString && csrfToken) {
+    headers["Cookie"] = `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`;
+    headers["X-CSRFToken"] = csrfToken;
+  }
 
-    const res = await fetch("https://leetcode.com/graphql", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ query }),
-    });
+  const res = await fetch("https://leetcode.com/graphql", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ query }),
+  });
 
-    const data = await res.json();
-    return data.data.activeDailyCodingChallengeQuestion;
+  const data = await res.json();
+  return data.data.activeDailyCodingChallengeQuestion;
 }
 
 export async function getNextUnsolved(sessionString: string, csrfToken: string) {
-    const query = `
+  const query = `
     query problemsetQuestionList($categorySlug: String, $limit: Int, $skip: Int, $filters: QuestionListFilterInput) {
       problemsetQuestionList: questionList(
         categorySlug: $categorySlug
@@ -67,33 +67,52 @@ export async function getNextUnsolved(sessionString: string, csrfToken: string) 
     }
   `;
 
-    const variables = {
-        categorySlug: "all-code-essentials",
-        limit: 1,
-        skip: 0,
-        filters: {
-            status: "NOT_STARTED",
-            premiumOnly: false
-        }
-    };
+  const variables = {
+    categorySlug: "", // General search to find all unsolved problems
+    limit: 100,
+    skip: 0,
+    filters: {
+      status: "NOT_STARTED",
+      premiumOnly: false
+    }
+  };
 
-    const res = await fetch("https://leetcode.com/graphql", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0",
-            "Cookie": `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`,
-            "X-CSRFToken": csrfToken,
-        },
-        body: JSON.stringify({ query, variables }),
-    });
+  const res = await fetch("https://leetcode.com/graphql", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0",
+      "Cookie": `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`,
+      "X-CSRFToken": csrfToken,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
 
-    const data = await res.json();
-    return data.data.problemsetQuestionList.questions[0]; // Return the first unsolved one
+  const data = await res.json();
+  const questions = data.data?.problemsetQuestionList?.questions || [];
+
+  // Find first non-premium algorithmic question
+  const target = questions.find((q: any) => {
+    if (q.paidOnly) return false;
+
+    // Skip Database / Shell / Concurrency
+    const nonCppTags = ["Database", "Shell", "Concurrency"];
+    const isNonCpp = q.topicTags.some((tag: any) => nonCppTags.includes(tag.name));
+    if (isNonCpp) return false;
+
+    // Ensure it's an algorithmic problem (to guarantee C++ snippet)
+    const isAlgo = q.topicTags.length === 0 || q.topicTags.some((t: any) =>
+      ["algorithms", "dynamic-programming", "array", "string", "hash-table"].includes(t.slug)
+    );
+
+    return isAlgo;
+  });
+
+  return target;
 }
 
 export async function getQuestionData(titleSlug: string) {
-    const query = `
+  const query = `
     query questionData($titleSlug: String!) {
       question(titleSlug: $titleSlug) {
         questionId
@@ -108,64 +127,64 @@ export async function getQuestionData(titleSlug: string) {
     }
   `;
 
-    const res = await fetch("https://leetcode.com/graphql", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0",
-        },
-        body: JSON.stringify({ query, variables: { titleSlug } }),
-    });
+  const res = await fetch("https://leetcode.com/graphql", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0",
+    },
+    body: JSON.stringify({ query, variables: { titleSlug } }),
+  });
 
-    return (await res.json()).data.question;
+  return (await res.json()).data.question;
 }
 
 export async function submitSolution(
-    sessionString: string,
-    csrfToken: string,
-    questionId: string,
-    lang: string,
-    typedCode: string,
-    titleSlug: string
+  sessionString: string,
+  csrfToken: string,
+  questionId: string,
+  lang: string,
+  typedCode: string,
+  titleSlug: string
 ) {
-    const url = `https://leetcode.com/problems/${titleSlug}/submit/`;
+  const url = `https://leetcode.com/problems/${titleSlug}/submit/`;
 
-    const res = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0",
-            "Cookie": `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`,
-            "X-CSRFToken": csrfToken,
-            "Referer": `https://leetcode.com/problems/${titleSlug}/`,
-            "Origin": "https://leetcode.com"
-        },
-        body: JSON.stringify({
-            lang,
-            question_id: questionId,
-            typed_code: typedCode,
-        }),
-    });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0",
+      "Cookie": `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`,
+      "X-CSRFToken": csrfToken,
+      "Referer": `https://leetcode.com/problems/${titleSlug}/`,
+      "Origin": "https://leetcode.com"
+    },
+    body: JSON.stringify({
+      lang,
+      question_id: questionId,
+      typed_code: typedCode,
+    }),
+  });
 
-    // LeetCode returns a submission ID first, then we might need to poll for status.
-    // But often for immediate result (or error), we get something.
-    // Actually, submit returns { submission_id: number }.
-    // Then we need to check checkSubmission/${submission_id}
+  // LeetCode returns a submission ID first, then we might need to poll for status.
+  // But often for immediate result (or error), we get something.
+  // Actually, submit returns { submission_id: number }.
+  // Then we need to check checkSubmission/${submission_id}
 
-    return await res.json();
+  return await res.json();
 }
 
 export async function checkSubmission(submissionId: number, sessionString: string, csrfToken: string) {
-    // Simple pause before check
-    await new Promise(r => setTimeout(r, 2000));
+  // Simple pause before check
+  await new Promise(r => setTimeout(r, 2000));
 
-    const res = await fetch(`https://leetcode.com/submissions/detail/${submissionId}/check/`, {
-        headers: {
-            "User-Agent": "Mozilla/5.0",
-            "Cookie": `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`,
-            "X-CSRFToken": csrfToken,
-        }
-    });
+  const res = await fetch(`https://leetcode.com/submissions/detail/${submissionId}/check/`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Cookie": `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`,
+      "X-CSRFToken": csrfToken,
+    }
+  });
 
-    return await res.json();
+  return await res.json();
 }
