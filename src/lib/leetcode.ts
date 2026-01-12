@@ -188,3 +188,28 @@ export async function checkSubmission(submissionId: number, sessionString: strin
 
   return await res.json();
 }
+
+export async function getCurrentUser(sessionString: string, csrfToken: string) {
+  const query = `
+    query currentUser {
+      user {
+        username
+        isPremium
+      }
+    }
+  `;
+
+  const res = await fetch("https://leetcode.com/graphql", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0",
+      "Cookie": `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`,
+      "X-CSRFToken": csrfToken,
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  const data = await res.json();
+  return data.data?.user;
+}

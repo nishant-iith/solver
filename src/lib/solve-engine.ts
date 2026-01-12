@@ -67,14 +67,13 @@ export async function runSolveFlow(config: SolveConfig) {
     const result = await checkSubmission(submission.submission_id, leetcode_session, csrf_token);
 
     if (tg_token && tg_chat_id) {
-        const problemLink = `https://leetcode.com/problems/${questionSlug}`;
-        const emoji = qData.difficulty === 'Easy' ? '🟢' : qData.difficulty === 'Medium' ? '🟡' : '🔴';
+        // Simple notification as requested: Title + Number + Status
+        // qData.questionFrontendId is the problem number
+        const problemNumber = qData.questionFrontendId || "?";
 
         await sendTelegramMessage(tg_token, tg_chat_id,
             `<b>✅ LeetCode Solved!</b>\n\n` +
-            `<b>Problem:</b> <a href="${problemLink}">${qData.title}</a>\n` +
-            `<b>Difficulty:</b> ${emoji} ${qData.difficulty}\n` +
-            `<b>Source:</b> ${problemSource}\n` +
+            `<b>Problem:</b> ${problemNumber}. ${qData.title}\n` +
             `<b>Status:</b> ${result.state || 'Accepted'}`
         );
     }
