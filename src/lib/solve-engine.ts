@@ -58,19 +58,34 @@ export async function runSolveFlow(config: SolveConfig) {
         );
 
         // 4. Submit
-        const submission = await submitCFSolution(cf_handle, problem, solutionCode, cf_jsessionid, cf_csrf_token);
+        let submitResult = "Submitted";
+        try {
+            const submission = await submitCFSolution(cf_handle, problem, solutionCode, cf_jsessionid, cf_csrf_token);
+            if (tg_token && tg_chat_id) {
+                await sendTelegramMessage(tg_token, tg_chat_id,
+                    `<b>✅ Codeforces Solved!</b>\n\n` +
+                    `<b>Problem:</b> ${problem.contestId}${problem.index} - ${problem.name}\n` +
+                    `<b>Stats:</b> Rating ${problem.rating || 800}\n` +
+                    `<b>Status:</b> Submitted (Check Profile)`
+                );
+            }
+        } catch (err: any) {
+            console.error("CF Submit Error:", err.message);
+            submitResult = "Manual Submission Required";
 
-        if (tg_token && tg_chat_id) {
-            await sendTelegramMessage(tg_token, tg_chat_id,
-                `<b>✅ Codeforces Solved!</b>\n\n` +
-                `<b>Problem:</b> ${problem.contestId}${problem.index} - ${problem.name}\n` +
-                `<b>Stats:</b> Rating ${problem.rating || 800}\n` +
-                `<b>Status:</b> Submitted (Check Profile)`
-            );
+            if (tg_token && tg_chat_id) {
+                await sendTelegramMessage(tg_token, tg_chat_id,
+                    `<b>⚠️ Automatic Submission Blocked</b>\n\n` +
+                    `Codeforces blocked the cloud IP. Here is the solution for manual submission:\n\n` +
+                    `<b>Problem:</b> <a href="https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}">${problem.name}</a>`
+                );
+                // Send code in a separate message for easy copying
+                await sendTelegramMessage(tg_token, tg_chat_id, `<pre language="cpp">${solutionCode}</pre>`);
+            }
         }
 
         return {
-            status: "Submitted",
+            status: submitResult,
             problem: problem.name,
             source: "Codeforces",
             code: solutionCode
