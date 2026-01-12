@@ -131,6 +131,35 @@ export async function POST(req: NextRequest) {
                     await sendTelegramMessage(botToken, chatId, `❌ <b>Error:</b> ${err.message}`);
                 }
             }
+            else if (text === "/cf") {
+                if (!settings.cf_active && !settings.is_active) {
+                    // Check if at least one is active? Or just allow it if manually triggered?
+                    // Let's allow manual trigger if credentials exist.
+                }
+
+                if (!settings.cf_handle || !settings.cf_jsessionid || !settings.cf_csrf_token) {
+                    await sendTelegramMessage(botToken, chatId, "⚠️ <b>Codeforces Setup Required!</b>\n\nPlease add your CF Handle, JSESSIONID, and CSRF Token in the app settings.");
+                    return NextResponse.json({ ok: true });
+                }
+
+                await sendTelegramMessage(botToken, chatId, "🤖 <b>Solving Random Codeforces (800-1200)...</b>");
+                try {
+                    const result = await runSolveFlow({
+                        platform: "codeforces",
+                        leetcode_session: settings.leetcode_session, // Not used but TS might complain if optional isn't handled well, but I made them optional.
+                        csrf_token: settings.csrf_token,
+                        gemini_key: geminiKey,
+                        tg_token: botToken,
+                        tg_chat_id: chatId,
+                        mode: "next", // Random
+                        cf_handle: settings.cf_handle,
+                        cf_jsessionid: settings.cf_jsessionid,
+                        cf_csrf_token: settings.cf_csrf_token
+                    });
+                } catch (err: any) {
+                    await sendTelegramMessage(botToken, chatId, `❌ <b>CF Error:</b> ${err.message}`);
+                }
+            }
             else if (text === "/status") {
                 await sendTelegramMessage(botToken, chatId, "🔍 <b>Checking session health...</b>");
                 const user = await getCurrentUser(settings.leetcode_session, settings.csrf_token);

@@ -21,6 +21,10 @@ export default function Home() {
     tg_token: "",
     tg_chat_id: "",
     auto_solve: false,
+    cf_handle: "",
+    cf_jsessionid: "",
+    cf_csrf_token: "",
+    cf_auto_solve: false,
   });
 
   useEffect(() => {
@@ -30,8 +34,12 @@ export default function Home() {
     const tg_token = localStorage.getItem("tg_token") || "";
     const tg_chat_id = localStorage.getItem("tg_chat_id") || "";
     const auto_solve = localStorage.getItem("auto_solve") === "true";
+    const cf_handle = localStorage.getItem("cf_handle") || "";
+    const cf_jsessionid = localStorage.getItem("cf_jsessionid") || "";
+    const cf_csrf_token = localStorage.getItem("cf_csrf_token") || "";
+    const cf_auto_solve = localStorage.getItem("cf_auto_solve") === "true";
 
-    setCredentials({ session, csrf, gemini, tg_token, tg_chat_id, auto_solve });
+    setCredentials({ session, csrf, gemini, tg_token, tg_chat_id, auto_solve, cf_handle, cf_jsessionid, cf_csrf_token, cf_auto_solve });
   }, []);
 
   const saveSettings = async () => {
@@ -41,9 +49,13 @@ export default function Home() {
     localStorage.setItem("tg_token", credentials.tg_token);
     localStorage.setItem("tg_chat_id", credentials.tg_chat_id);
     localStorage.setItem("auto_solve", credentials.auto_solve.toString());
+    localStorage.setItem("cf_handle", credentials.cf_handle);
+    localStorage.setItem("cf_jsessionid", credentials.cf_jsessionid);
+    localStorage.setItem("cf_csrf_token", credentials.cf_csrf_token);
+    localStorage.setItem("cf_auto_solve", credentials.cf_auto_solve.toString());
 
     // Sync to Supabase if automation is enabled
-    if (credentials.auto_solve) {
+    if (credentials.auto_solve || credentials.cf_auto_solve) {
       try {
         if (!supabase) {
           console.error("Supabase client not initialized. Check your environment variables.");
@@ -59,7 +71,11 @@ export default function Home() {
             gemini_api_key: credentials.gemini,
             telegram_token: credentials.tg_token,
             telegram_chat_id: credentials.tg_chat_id,
-            is_active: credentials.auto_solve
+            is_active: credentials.auto_solve,
+            cf_handle: credentials.cf_handle,
+            cf_jsessionid: credentials.cf_jsessionid,
+            cf_csrf_token: credentials.cf_csrf_token,
+            cf_active: credentials.cf_auto_solve
           });
 
         if (error) console.error("Supabase Sync Error:", error);
@@ -286,6 +302,53 @@ export default function Home() {
                   <p className={styles.helperText}>
                     Get your chat ID by messaging @userinfobot on Telegram.
                   </p>
+
+                  <hr style={{ borderColor: 'var(--border)', margin: '20px 0' }} />
+
+                  <h3 style={{ color: 'var(--foreground)', marginBottom: '15px' }}>Codeforces (Beta)</h3>
+
+                  <div className={styles.toggleContainer}>
+                    <label>Enable CF Auto-Solve</label>
+                    <input
+                      type="checkbox"
+                      className={styles.toggle}
+                      checked={credentials.cf_auto_solve}
+                      onChange={(e) => setCredentials({ ...credentials, cf_auto_solve: e.target.checked })}
+                    />
+                  </div>
+
+                  <div className={styles.inputGroup}>
+                    <label>CF Handle</label>
+                    <input
+                      className={styles.input}
+                      type="text"
+                      value={credentials.cf_handle}
+                      onChange={(e) => setCredentials({ ...credentials, cf_handle: e.target.value })}
+                      placeholder="tourist"
+                    />
+                  </div>
+
+                  <div className={styles.inputGroup}>
+                    <label>CF JSESSIONID</label>
+                    <input
+                      className={styles.input}
+                      type="password"
+                      value={credentials.cf_jsessionid}
+                      onChange={(e) => setCredentials({ ...credentials, cf_jsessionid: e.target.value })}
+                      placeholder="Look in browser cookies"
+                    />
+                  </div>
+
+                  <div className={styles.inputGroup}>
+                    <label>CF CSRF Token (39ce7...)</label>
+                    <input
+                      className={styles.input}
+                      type="password"
+                      value={credentials.cf_csrf_token}
+                      onChange={(e) => setCredentials({ ...credentials, cf_csrf_token: e.target.value })}
+                      placeholder="From page source or cookies"
+                    />
+                  </div>
                 </div>
               )}
 
