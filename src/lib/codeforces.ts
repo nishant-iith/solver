@@ -67,31 +67,52 @@ export async function submitCFSolution(
     jsessionid: string,
     csrf_token: string
 ) {
+    // Generate random ftaa
+    const ftaa = Array.from({ length: 18 }, () => Math.floor(Math.random() * 36).toString(36)).join('');
+
     const body = new URLSearchParams();
     body.append("csrf_token", csrf_token);
-    body.append("ftaa", "");
-    body.append("bfaa", "");
+    body.append("ftaa", ftaa);
+    body.append("bfaa", "f1a7b8e9"); // constant often used
     body.append("action", "submitSolution");
     body.append("submittedProblemIndex", problem.index);
     body.append("contestId", problem.contestId.toString());
     body.append("programTypeId", "54"); // C++20 (MSVC 2022)
     body.append("source", code);
     body.append("tabSize", "4");
+    body.append("_tta", "176"); // Tracking
+
+    // 1. Pre-validation: Check if session is alive
+    const checkRes = await fetch("https://codeforces.com/settings/general", {
+        headers: {
+            "Cookie": `JSESSIONID=${jsessionid}; 39ce7=${csrf_token}`,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+    });
+
+    if (checkRes.url.includes("login") || checkRes.status === 403) {
+        throw new Error("CF Session Invalid! Codeforces likely blocked this IP. Session cookies are often IP-locked.");
+    }
 
     const res = await fetch(`https://codeforces.com/problemset/submit?csrf_token=${csrf_token}`, {
         method: "POST",
         headers: {
             "Content-Type": "application/x-www-form-urlencoded",
-            "Cookie": `JSESSIONID=${jsessionid}; 39ce7=${csrf_token}`, // CF often uses 39ce7 cookie for CSRF or just checking presence
+            "Cookie": `JSESSIONID=${jsessionid}; 39ce7=${csrf_token}`,
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Origin": "https://codeforces.com",
             "Referer": `https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`,
-            "x-csrf-token": csrf_token // sometimes header is needed too
         },
         body: body.toString()
     });
 
     if (res.status === 302 || res.status === 200) {
+        // If 302 redirect to my submissions, success.
+        // If 200, might be validation error on page.
+        const text = await res.text();
+        if (text.includes("Source code is too short") || text.includes("error")) {
+            throw new Error("Submission Rejected (Logic/Validation Error)");
+        }
         return { status: "Success", message: "Check your CF status page!" };
     }
 
