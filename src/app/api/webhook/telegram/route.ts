@@ -7,18 +7,25 @@ import { getCurrentUser } from "@/lib/leetcode";
 export const maxDuration = 60; // Vercel Pro: extend timeout to 60s
 
 export async function POST(req: NextRequest) {
+    console.log("WEBHOOK: Received request");
     try {
         const payload = await req.json();
+        console.log("WEBHOOK: Payload parsed, update_id:", payload.update_id);
 
         const message = payload.message;
         if (!message || !message.text) {
+            console.log("WEBHOOK: No message or text, returning");
             return NextResponse.json({ ok: true });
         }
 
         const chatId = message.chat.id.toString();
         const text = message.text.trim();
+        console.log("WEBHOOK: Chat ID:", chatId, "Text:", text);
 
-        if (!supabase) return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
+        if (!supabase) {
+            console.log("WEBHOOK: Supabase not configured");
+            return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
+        }
 
         const { data: settings, error } = await supabase
             .from('automation_settings')
@@ -26,13 +33,17 @@ export async function POST(req: NextRequest) {
             .eq('telegram_chat_id', chatId)
             .single();
 
+        console.log("WEBHOOK: Supabase query result - error:", error, "settings:", settings?.id);
+
         if (error || !settings) {
+            console.log("WEBHOOK: No settings found for chat, sending unauthorized message");
             await sendTelegramMessage(process.env.TELEGRAM_BOT_TOKEN || "", chatId, "⚠️ You are not authorized to use this bot. Please link your Chat ID in the web app.");
             return NextResponse.json({ ok: true });
         }
 
         // DUPLICATION CHECK
         const updateId = payload.update_id;
+
         if (updateId && settings.last_telegram_update_id === updateId) {
             console.log("Ignoring duplicate update:", updateId);
             return NextResponse.json({ ok: true });
