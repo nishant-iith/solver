@@ -1,10 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { runSolveFlow } from "@/lib/solve-engine";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { getCurrentUser } from "@/lib/leetcode";
 
-export const maxDuration = 60; // Vercel Pro: extend timeout to 60s
+export const maxDuration = 10; // Keep low, we're just queuing now
+
+// Helper to invoke Supabase Edge Function
+async function invokeProcessJob(jobId: string) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+        console.error("Missing Supabase env vars");
+        return;
+    }
+
+    // Fire and forget - don't await, just invoke
+    fetch(`${supabaseUrl}/functions/v1/process-solve-job`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({ job_id: jobId }),
+    }).catch(err => console.error("Edge Function invoke error:", err));
+}
 
 export async function POST(req: NextRequest) {
     console.log("WEBHOOK: Received request");
@@ -49,29 +69,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ ok: true });
         }
 
-        // PROCESSING LOCK CHECK
-        if (settings.processing_started_at) {
-            const lockTime = new Date(settings.processing_started_at).getTime();
-            const now = Date.now();
-            if (now - lockTime < 60000) {
-                console.log("Ignored: Processing Lock Active");
-                return NextResponse.json({ ok: true });
-            }
-        }
-
-        // Update ID and lock immediately
+        // Update ID immediately
         if (updateId) {
             await supabase
                 .from('automation_settings')
-                .update({
-                    last_telegram_update_id: updateId,
-                    processing_started_at: new Date().toISOString()
-                })
+                .update({ last_telegram_update_id: updateId })
                 .eq('id', settings.id);
         }
 
         const botToken = settings.telegram_token;
-        const geminiKey = settings.gemini_api_key || process.env.GEMINI_API_KEY || "";
 
         try {
             // Handle Commands
@@ -96,56 +102,63 @@ export async function POST(req: NextRequest) {
                 await supabase.from('automation_settings').update({ is_active: false }).eq('id', settings.id);
                 await sendTelegramMessage(botToken, chatId, "🛑 <b>Bot Stopped!</b>\n\nI have paused all automation. Use /start to re-enable.");
             }
-
             else if (text === "/solve") {
                 if (!settings.is_active) {
-                    await sendTelegramMessage(botToken, chatId, "⚠️ <b>Bot is Paused!</b>\n\nUse the web app to re-enable automation.");
+                    await sendTelegramMessage(botToken, chatId, "⚠️ <b>Bot is Paused!</b>\n\nUse /start to re-enable automation.");
                     return NextResponse.json({ ok: true });
                 }
-                await sendTelegramMessage(botToken, chatId, "🤖 <b>Processing POTD...</b> Please wait.");
-                try {
-                    const result = await runSolveFlow({
-                        leetcode_session: settings.leetcode_session,
-                        csrf_token: settings.csrf_token,
-                        gemini_key: geminiKey,
-                        tg_token: botToken,
-                        tg_chat_id: chatId,
-                        mode: "potd",
-                        settings_id: settings.id
-                    });
 
-                    if (result.status === "ALREADY_SOLVED") {
-                        await sendTelegramMessage(botToken, chatId, "✅ Today's POTD is already solved!");
-                    }
-                } catch (err: any) {
-                    console.error("Solve Error:", err);
-                    await sendTelegramMessage(botToken, chatId, `❌ <b>Error:</b> ${err.message}`);
+                // Queue job instead of processing
+                const { data: job, error: jobError } = await supabase
+                    .from('solve_jobs')
+                    .insert({
+                        settings_id: settings.id,
+                        platform: 'leetcode',
+                        mode: 'potd',
+                        status: 'pending'
+                    })
+                    .select()
+                    .single();
+
+                if (jobError || !job) {
+                    console.error("Failed to create job:", jobError);
+                    await sendTelegramMessage(botToken, chatId, "❌ Failed to queue job. Please try again.");
+                    return NextResponse.json({ ok: true });
                 }
+
+                await sendTelegramMessage(botToken, chatId, "🔄 <b>Job Queued!</b>\n\nProcessing POTD... You'll receive a notification when done.");
+
+                // Invoke Edge Function asynchronously
+                invokeProcessJob(job.id);
             }
             else if (text === "/next") {
                 if (!settings.is_active) {
-                    await sendTelegramMessage(botToken, chatId, "⚠️ <b>Bot is Paused!</b>\n\nUse the web app to re-enable automation.");
+                    await sendTelegramMessage(botToken, chatId, "⚠️ <b>Bot is Paused!</b>\n\nUse /start to re-enable automation.");
                     return NextResponse.json({ ok: true });
                 }
-                await sendTelegramMessage(botToken, chatId, "🤖 <b>Finding next problem...</b> This may take a minute.");
-                try {
-                    const result = await runSolveFlow({
-                        leetcode_session: settings.leetcode_session,
-                        csrf_token: settings.csrf_token,
-                        gemini_key: geminiKey,
-                        tg_token: botToken,
-                        tg_chat_id: chatId,
-                        mode: "next",
-                        settings_id: settings.id
-                    });
 
-                    if (result.status === "ALL_SOLVED") {
-                        await sendTelegramMessage(botToken, chatId, "🏆 You've solved everything! No more free algorithms left.");
-                    }
-                } catch (err: any) {
-                    console.error("Next Error:", err);
-                    await sendTelegramMessage(botToken, chatId, `❌ <b>Error:</b> ${err.message}`);
+                // Queue job instead of processing
+                const { data: job, error: jobError } = await supabase
+                    .from('solve_jobs')
+                    .insert({
+                        settings_id: settings.id,
+                        platform: 'leetcode',
+                        mode: 'next',
+                        status: 'pending'
+                    })
+                    .select()
+                    .single();
+
+                if (jobError || !job) {
+                    console.error("Failed to create job:", jobError);
+                    await sendTelegramMessage(botToken, chatId, "❌ Failed to queue job. Please try again.");
+                    return NextResponse.json({ ok: true });
                 }
+
+                await sendTelegramMessage(botToken, chatId, "🔄 <b>Job Queued!</b>\n\nFinding and solving next problem... You'll receive a notification when done.");
+
+                // Invoke Edge Function asynchronously
+                invokeProcessJob(job.id);
             }
             else if (text === "/cf") {
                 if (!settings.cf_handle || !settings.cf_jsessionid || !settings.cf_csrf_token) {
@@ -153,25 +166,7 @@ export async function POST(req: NextRequest) {
                     return NextResponse.json({ ok: true });
                 }
 
-                await sendTelegramMessage(botToken, chatId, "🤖 <b>Solving Random Codeforces...</b>");
-                try {
-                    await runSolveFlow({
-                        platform: "codeforces",
-                        leetcode_session: settings.leetcode_session,
-                        csrf_token: settings.csrf_token,
-                        gemini_key: geminiKey,
-                        tg_token: botToken,
-                        tg_chat_id: chatId,
-                        mode: "next",
-                        cf_handle: settings.cf_handle,
-                        cf_jsessionid: settings.cf_jsessionid,
-                        cf_csrf_token: settings.cf_csrf_token,
-                        settings_id: settings.id
-                    });
-                } catch (err: any) {
-                    console.error("CF Error:", err);
-                    await sendTelegramMessage(botToken, chatId, `❌ <b>CF Error:</b> ${err.message}`);
-                }
+                await sendTelegramMessage(botToken, chatId, "⚠️ <b>Codeforces</b> is currently limited due to IP restrictions. Use /solve or /next for LeetCode.");
             }
             else if (text === "/status") {
                 await sendTelegramMessage(botToken, chatId, "🔍 <b>Checking session...</b>");
@@ -179,26 +174,30 @@ export async function POST(req: NextRequest) {
                     const user = await getCurrentUser(settings.leetcode_session, settings.csrf_token);
                     const active = settings.is_active ? "🟢 Active" : "🔴 Inactive";
                     const sessionHealth = user ? `✅ Healthy (${user.username})` : "❌ Expired";
+
+                    // Check pending jobs
+                    const { count } = await supabase
+                        .from('solve_jobs')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('settings_id', settings.id)
+                        .eq('status', 'pending');
+
                     await sendTelegramMessage(botToken, chatId,
                         `📈 <b>Bot Status:</b> ${active}\n` +
                         `👤 <b>LeetCode Session:</b> ${sessionHealth}\n` +
-                        `📅 <b>Last Solved:</b> ${settings.last_solved_date || "Never"}`
+                        `📅 <b>Last Solved:</b> ${settings.last_solved_date || "Never"}\n` +
+                        `⏳ <b>Pending Jobs:</b> ${count || 0}`
                     );
                 } catch (err: any) {
                     await sendTelegramMessage(botToken, chatId, `❌ <b>Error checking status:</b> ${err.message}`);
                 }
             }
             else {
-                // Unknown command - send help
                 await sendTelegramMessage(botToken, chatId, "❓ Unknown command. Send /help to see available commands.");
             }
 
-        } finally {
-            // ALWAYS RELEASE LOCK
-            await supabase
-                .from('automation_settings')
-                .update({ processing_started_at: null })
-                .eq('id', settings.id);
+        } catch (err: any) {
+            console.error("Command error:", err);
         }
 
         return NextResponse.json({ ok: true });
