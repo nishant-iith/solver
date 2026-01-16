@@ -116,6 +116,9 @@ export async function getQuestionData(titleSlug: string) {
     query questionData($titleSlug: String!) {
       question(titleSlug: $titleSlug) {
         questionId
+        questionFrontendId
+        title
+        difficulty
         content
         codeSnippets {
           lang
@@ -138,6 +141,7 @@ export async function getQuestionData(titleSlug: string) {
 
   return (await res.json()).data.question;
 }
+
 
 export async function submitSolution(
   sessionString: string,
@@ -175,19 +179,35 @@ export async function submitSolution(
 }
 
 export async function checkSubmission(submissionId: number, sessionString: string, csrfToken: string) {
-  // Simple pause before check
-  await new Promise(r => setTimeout(r, 2000));
+  // Poll for result with max 10 attempts (30 seconds total)
+  const maxAttempts = 10;
+  const pollInterval = 3000; // 3 seconds
 
-  const res = await fetch(`https://leetcode.com/submissions/detail/${submissionId}/check/`, {
-    headers: {
-      "User-Agent": "Mozilla/5.0",
-      "Cookie": `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`,
-      "X-CSRFToken": csrfToken,
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise(r => setTimeout(r, pollInterval));
+
+    const res = await fetch(`https://leetcode.com/submissions/detail/${submissionId}/check/`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Cookie": `LEETCODE_SESSION=${sessionString}; csrftoken=${csrfToken};`,
+        "X-CSRFToken": csrfToken,
+      }
+    });
+
+    const result = await res.json();
+
+    // Check if submission is still pending
+    if (result.state && result.state !== "PENDING" && result.state !== "STARTED") {
+      return result;
     }
-  });
 
-  return await res.json();
+    console.log(`Submission check attempt ${attempt + 1}/${maxAttempts}: ${result.state || 'no state'}`);
+  }
+
+  // If we exhausted all attempts, return last result
+  return { state: "TIMEOUT", message: "Submission timed out waiting for result" };
 }
+
 
 export async function getCurrentUser(sessionString: string, csrfToken: string) {
   const query = `

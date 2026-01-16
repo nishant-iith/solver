@@ -2,6 +2,7 @@ import { generateSolution } from "./gemini";
 import { getPOTD, getQuestionData, submitSolution, checkSubmission, getNextUnsolved, getCurrentUser } from "./leetcode";
 import { getCFUnsolvedProblem, getCFProblemContent, submitCFSolution } from "./codeforces";
 import { sendTelegramMessage } from "./telegram";
+import { supabase } from "./supabase";
 
 export interface SolveConfig {
     platform?: "leetcode" | "codeforces";
@@ -17,12 +18,15 @@ export interface SolveConfig {
     tg_token?: string;
     tg_chat_id?: string;
     mode: "potd" | "next"; // For CF, "next" means random unsolved in range
+
+    // For DB update (optional)
+    settings_id?: number;
 }
 
 export async function runSolveFlow(config: SolveConfig) {
     const {
         platform = "leetcode",
-        gemini_key, tg_token, tg_chat_id, mode
+        gemini_key, tg_token, tg_chat_id, mode, settings_id
     } = config;
 
     // ==========================================
@@ -36,20 +40,20 @@ export async function runSolveFlow(config: SolveConfig) {
         }
 
         // 1. Find Unsolved Problem
-        // Default range 800-1200 for now. Can be configurable later.
         const problem = await getCFUnsolvedProblem(cf_handle, 800, 1200);
         if (!problem) {
             return { status: "ALL_SOLVED", message: "No unsolved problems found in range!" };
         }
 
-        const problemSource = `CF ${problem.contestId}${problem.index}: ${problem.name}`;
-
         // 2. Scrape Content
         const content = await getCFProblemContent(problem.contestId, problem.index);
 
-        // 3. Generate Solution
-        // Note: Codeforces C++ usually requires full template.
-        // We will tell Gemini to be robust. 
+        // 3. Notify user we're generating
+        if (tg_token && tg_chat_id) {
+            await sendTelegramMessage(tg_token, tg_chat_id, "🧠 <b>Generating solution with AI...</b>");
+        }
+
+        // 4. Generate Solution
         const solutionCode = await generateSolution(
             gemini_key,
             "C++ 20",
@@ -57,7 +61,7 @@ export async function runSolveFlow(config: SolveConfig) {
             "// Write full solution including main function"
         );
 
-        // 4. Submit
+        // 5. Submit
         let submitResult = "Submitted";
         try {
             const submission = await submitCFSolution(cf_handle, problem, solutionCode, cf_jsessionid, cf_csrf_token);
@@ -79,7 +83,6 @@ export async function runSolveFlow(config: SolveConfig) {
                     `Codeforces blocked the cloud IP. Here is the solution for manual submission:\n\n` +
                     `<b>Problem:</b> <a href="https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}">${problem.name}</a>`
                 );
-                // Send code in a separate message for easy copying
                 await sendTelegramMessage(tg_token, tg_chat_id, `<pre language="cpp">${solutionCode}</pre>`);
             }
         }
@@ -125,12 +128,22 @@ export async function runSolveFlow(config: SolveConfig) {
         throw new Error("No supported language found for this problem.");
     }
 
+    // Notify user we're generating
+    if (tg_token && tg_chat_id) {
+        await sendTelegramMessage(tg_token, tg_chat_id, `🧠 <b>Generating ${snippet.lang} solution...</b>`);
+    }
+
     const solutionCode = await generateSolution(
         gemini_key,
         snippet.lang,
         qData.content,
         snippet.code
     );
+
+    // Notify user we're submitting
+    if (tg_token && tg_chat_id) {
+        await sendTelegramMessage(tg_token, tg_chat_id, "📤 <b>Submitting solution...</b>");
+    }
 
     const submission = await submitSolution(
         leetcode_session,
@@ -150,15 +163,24 @@ export async function runSolveFlow(config: SolveConfig) {
 
     const result = await checkSubmission(submission.submission_id, leetcode_session, csrf_token);
 
+    // Update last_solved_date in database
+    if (supabase && settings_id && result.state === "Accepted") {
+        const today = new Date().toISOString().split('T')[0];
+        await supabase
+            .from('automation_settings')
+            .update({ last_solved_date: today })
+            .eq('id', settings_id);
+    }
+
     if (tg_token && tg_chat_id) {
-        // Simple notification as requested: Title + Number + Status
-        // qData.questionFrontendId is the problem number
         const problemNumber = qData.questionFrontendId || "?";
+        const statusEmoji = result.state === "Accepted" ? "✅" : result.state === "Wrong Answer" ? "❌" : "⚠️";
 
         await sendTelegramMessage(tg_token, tg_chat_id,
-            `<b>✅ LeetCode Solved!</b>\n\n` +
+            `<b>${statusEmoji} LeetCode ${result.state || 'Submitted'}!</b>\n\n` +
             `<b>Problem:</b> ${problemNumber}. ${qData.title}\n` +
-            `<b>Status:</b> ${result.state || 'Accepted'}`
+            `<b>Difficulty:</b> ${qData.difficulty}\n` +
+            `<b>Status:</b> ${result.state || 'Pending'}`
         );
     }
 
@@ -170,3 +192,4 @@ export async function runSolveFlow(config: SolveConfig) {
         code: solutionCode
     };
 }
+
