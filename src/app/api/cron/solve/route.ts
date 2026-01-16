@@ -97,6 +97,20 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ message: "Waiting for target time: " + targetTime.toISOString() });
         }
 
+        // Check if there's already a pending or processing job for today's POTD
+        const { data: existingJob } = await supabase
+            .from('solve_jobs')
+            .select('id')
+            .eq('settings_id', settings.id)
+            .eq('mode', 'potd')
+            .in('status', ['pending', 'processing'])
+            .gte('created_at', todayStr + 'T00:00:00Z') // Created today
+            .single();
+
+        if (existingJob) {
+            return NextResponse.json({ message: "Job already pending/processing for today." });
+        }
+
         // TIME TO SOLVE - Queue the job instead of processing directly
         const { data: job, error: jobError } = await supabase
             .from('solve_jobs')
