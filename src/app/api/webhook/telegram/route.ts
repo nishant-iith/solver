@@ -75,22 +75,28 @@ export async function POST(req: NextRequest) {
 
         try {
             // Handle Commands
-            if (text === "/start" || text === "/help") {
+            if (text === "/help") {
                 await sendTelegramMessage(botToken, chatId,
                     `👋 <b>Welcome to LeetCode Solver!</b>\n\n` +
                     `I can help you solve problems directly from Telegram.\n\n` +
                     `🚀 <b>Commands:</b>\n` +
-                    `• /stop - EMERGENCY STOP\n` +
+                    `• /start - Re-enable automation\n` +
+                    `• /stop - Pause all automation\n` +
                     `• /solve - Solve today's POTD\n` +
                     `• /next - Solve the next free algorithm\n` +
                     `• /cf - Solve random Codeforces\n` +
                     `• /status - Check your session status`
                 );
             }
+            else if (text === "/start") {
+                await supabase.from('automation_settings').update({ is_active: true }).eq('id', settings.id);
+                await sendTelegramMessage(botToken, chatId, "✅ <b>Bot Activated!</b>\n\nAutomation is now enabled. I'm ready to solve problems!");
+            }
             else if (text === "/stop") {
                 await supabase.from('automation_settings').update({ is_active: false }).eq('id', settings.id);
-                await sendTelegramMessage(botToken, chatId, "🛑 <b>Bot Stopped!</b>\n\nI have paused all automation. Use the web app to re-enable.");
+                await sendTelegramMessage(botToken, chatId, "🛑 <b>Bot Stopped!</b>\n\nI have paused all automation. Use /start to re-enable.");
             }
+
             else if (text === "/solve") {
                 if (!settings.is_active) {
                     await sendTelegramMessage(botToken, chatId, "⚠️ <b>Bot is Paused!</b>\n\nUse the web app to re-enable automation.");
