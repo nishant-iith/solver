@@ -179,8 +179,8 @@ export async function submitSolution(
 }
 
 export async function checkSubmission(submissionId: number, sessionString: string, csrfToken: string) {
-  // Poll for result with max 10 attempts (30 seconds total)
-  const maxAttempts = 10;
+  // Poll for result - reduced to 3 attempts (9 seconds) to fit Vercel timeout
+  const maxAttempts = 3;
   const pollInterval = 3000; // 3 seconds
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -204,9 +204,10 @@ export async function checkSubmission(submissionId: number, sessionString: strin
     console.log(`Submission check attempt ${attempt + 1}/${maxAttempts}: ${result.state || 'no state'}`);
   }
 
-  // If we exhausted all attempts, return last result
-  return { state: "TIMEOUT", message: "Submission timed out waiting for result" };
+  // If we exhausted all attempts, return submitted status (don't assume failure)
+  return { state: "Submitted", message: "Check your LeetCode profile for results" };
 }
+
 
 
 export async function getCurrentUser(sessionString: string, csrfToken: string) {
