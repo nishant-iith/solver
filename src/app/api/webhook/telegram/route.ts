@@ -91,7 +91,8 @@ export async function POST(req: NextRequest) {
                     `• /solve - Solve today's POTD\n` +
                     `• /next - Solve the next free algorithm\n` +
                     `• /cf - Solve random Codeforces\n` +
-                    `• /status - Check your session status`
+                    `• /status - Check your session status\n` +
+                    `• /setcsrf &lt;token&gt; - Update LeetCode CSRF token`
                 );
             }
             else if (text === "/start") {
@@ -190,6 +191,32 @@ export async function POST(req: NextRequest) {
                     );
                 } catch (err: any) {
                     await sendTelegramMessage(botToken, chatId, `❌ <b>Error checking status:</b> ${err.message}`);
+                }
+            }
+            else if (text.toLowerCase().startsWith("/setcsrf")) {
+                const parts = text.split(/\s+/);
+                const newToken = parts.slice(1).join(" ").trim();
+                if (!newToken) {
+                    await sendTelegramMessage(botToken, chatId, "⚠️ <b>Usage:</b> /setcsrf &lt;your_csrf_token&gt;\n\nExample: <code>/setcsrf abc123xyz</code>");
+                    return NextResponse.json({ ok: true });
+                }
+
+                try {
+                    await supabase
+                        .from('automation_settings')
+                        .update({ csrf_token: newToken })
+                        .eq('id', settings.id);
+
+                    // Verify the new token works
+                    const user = await getCurrentUser(settings.leetcode_session, newToken);
+                    if (user) {
+                        await sendTelegramMessage(botToken, chatId, `✅ <b>CSRF Token Updated!</b>\n\nSession is healthy for user: <b>${user.username}</b>`);
+                    } else {
+                        await sendTelegramMessage(botToken, chatId, "⚠️ <b>CSRF Token Updated!</b>\n\nHowever, session validation failed. Please also check your LEETCODE_SESSION if issues persist.");
+                    }
+                } catch (err: any) {
+                    console.error("Error updating CSRF token:", err);
+                    await sendTelegramMessage(botToken, chatId, `❌ <b>Failed to update CSRF token:</b> ${err.message}`);
                 }
             }
             else {
